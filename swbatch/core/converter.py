@@ -32,6 +32,48 @@ class ConversionResult:
     warning_code: int = 0
 
 
+@dataclass
+class ConversionStats:
+    """轉檔統計結果
+
+    統一 CLI 和 GUI 的統計邏輯，確保 OPEN_FAILED 被正確計入失敗數。
+    """
+
+    success: int = 0
+    skipped: int = 0
+    failed: int = 0  # 包含 FAILED 和 OPEN_FAILED
+
+    @classmethod
+    def from_results(cls, results: list["ConversionResult"]) -> "ConversionStats":
+        """從轉檔結果建立統計
+
+        Args:
+            results: ConversionResult 列表
+
+        Returns:
+            ConversionStats 實例
+        """
+        stats = cls()
+        for result in results:
+            if result.status == ConversionStatus.SUCCESS:
+                stats.success += 1
+            elif result.status == ConversionStatus.SKIPPED:
+                stats.skipped += 1
+            else:
+                # FAILED 和 OPEN_FAILED 都計入失敗
+                stats.failed += 1
+        return stats
+
+    @property
+    def total(self) -> int:
+        """總數"""
+        return self.success + self.skipped + self.failed
+
+    def format_summary(self) -> str:
+        """格式化摘要字串"""
+        return f"成功: {self.success}, 略過: {self.skipped}, 失敗: {self.failed}"
+
+
 class ProgressCallback(Protocol):
     """進度回呼介面"""
 

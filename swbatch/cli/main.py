@@ -18,8 +18,8 @@ from rich.progress import (
 from rich.table import Table
 from rich.tree import Tree
 
-from swbatch.core import SolidWorksConverter, FileScanner, ExportFormat, ConversionTask
-from swbatch.core.converter import ConversionStatus
+from swbatch.core import SolidWorksConverter, FileScanner, ExportFormat, ConversionTask, parse_formats
+from swbatch.core.converter import ConversionStatus, ConversionStats
 from swbatch.core.logging_config import setup_logging, get_logger
 
 app = typer.Typer(
@@ -29,19 +29,6 @@ app = typer.Typer(
 )
 console = Console()
 logger = get_logger(__name__)
-
-
-
-
-
-def parse_formats(formats_str: str) -> list[ExportFormat]:
-    """解析格式字串"""
-    formats = []
-    for fmt in formats_str.split(","):
-        fmt = fmt.strip()
-        if fmt:
-            formats.append(ExportFormat.from_string(fmt))
-    return formats if formats else [ExportFormat.STL]
 
 
 @app.command()
@@ -216,9 +203,7 @@ def _show_preview(tasks: list[ConversionTask]) -> None:
 
 def _run_conversion(tasks: list[ConversionTask], skip_existing: bool) -> None:
     """執行轉檔"""
-    success_count = 0
-    failed_count = 0
-    skipped_count = 0
+    results = []
 
     start_time = time.perf_counter()
     with Progress(
@@ -234,13 +219,10 @@ def _run_conversion(tasks: list[ConversionTask], skip_existing: bool) -> None:
         transient=True,
     ) as progress:
         task_id = progress.add_task(
-            "[bold green]轉檔中...", 
+            "[bold green]轉檔中...",
             total=len(tasks),
             filename=""
         )
-        
-        # 追蹤已完成的檔案
-        completed_files = []
 
         def on_progress(
             current: int,
@@ -248,30 +230,16 @@ def _run_conversion(tasks: list[ConversionTask], skip_existing: bool) -> None:
             task: ConversionTask,
             status: ConversionStatus | None,
         ) -> None:
-            nonlocal success_count, failed_count, skipped_count
-
             if status is not None:
-                # 檔案處理完成，清空進度條上的檔名
-                # （已完成的檔案會透過 logger.info 顯示在進度條上方）
+                # 檔案處理完成，更新進度條
                 progress.update(task_id, advance=1, filename="", refresh=True)
-                
-                # 統計數量
-                if status == ConversionStatus.SUCCESS:
-                    success_count += 1
-                elif status == ConversionStatus.SKIPPED:
-                    skipped_count += 1
-                else:
-                    failed_count += 1
             else:
-                # 正在處理中，在進度條後顯示檔名
-                progress.update(
-                    task_id,
-                    filename=task.relative_source
-                )
+                # 正在處理中，顯示檔名
+                progress.update(task_id, filename=task.relative_source)
 
         try:
             with SolidWorksConverter(visible=False) as converter:
-                converter.convert_batch(
+                results = converter.convert_batch(
                     tasks=tasks,
                     on_progress=on_progress,
                     skip_existing=skip_existing,
@@ -283,13 +251,16 @@ def _run_conversion(tasks: list[ConversionTask], skip_existing: bool) -> None:
 
     elapsed_time = time.perf_counter() - start_time
 
+    # 使用 ConversionStats 統計結果
+    stats = ConversionStats.from_results(results)
+
     # 顯示結果
     console.print()
     console.print("[bold]轉檔完成！[/bold]")
-    console.print(f"[green]成功：{success_count}[/green]")
-    console.print(f"[yellow]略過：{skipped_count}[/yellow]")
-    if failed_count > 0:
-        console.print(f"[red]失敗：{failed_count}[/red]")
+    console.print(f"[green]成功：{stats.success}[/green]")
+    console.print(f"[yellow]略過：{stats.skipped}[/yellow]")
+    if stats.failed > 0:
+        console.print(f"[red]失敗：{stats.failed}[/red]")
     console.print(f"[blue]總耗時：{elapsed_time:.1f} 秒[/blue]")
 
 

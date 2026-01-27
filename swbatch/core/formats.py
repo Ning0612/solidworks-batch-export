@@ -1,5 +1,7 @@
 """輸出格式定義"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -66,3 +68,46 @@ SW_DOC_DRAWING = 3
 
 # 支援轉檔的來源副檔名
 SUPPORTED_EXTENSIONS = {".sldprt", ".sldasm"}
+
+
+def parse_formats(formats_str: str, allow_all: bool = False) -> list[ExportFormat]:
+    """解析格式字串
+
+    統一 CLI 和 GUI 的格式解析邏輯。
+
+    Args:
+        formats_str: 格式字串，如 "stl", "3mf", "stl,3mf", "all"
+        allow_all: 是否允許 "all" 關鍵字（展開為所有格式）
+
+    Returns:
+        ExportFormat 列表
+
+    Raises:
+        ValueError: 不支援的格式
+
+    Examples:
+        >>> parse_formats("stl")
+        [ExportFormat.STL]
+        >>> parse_formats("stl,3mf")
+        [ExportFormat.STL, ExportFormat.THREEMF]
+        >>> parse_formats("all", allow_all=True)
+        [ExportFormat.STL, ExportFormat.THREEMF]
+    """
+    formats_str = formats_str.strip().lower()
+
+    # 處理 "all" 關鍵字
+    if allow_all and formats_str == "all":
+        return [ExportFormat.STL, ExportFormat.THREEMF]
+
+    # 處理空字串
+    if not formats_str:
+        return [ExportFormat.STL]
+
+    # 解析逗號分隔的格式
+    formats = []
+    for fmt in formats_str.split(","):
+        fmt = fmt.strip()
+        if fmt:
+            formats.append(ExportFormat.from_string(fmt))
+
+    return formats if formats else [ExportFormat.STL]

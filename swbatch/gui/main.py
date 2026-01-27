@@ -9,8 +9,14 @@ from typing import Optional
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-from swbatch.core import SolidWorksConverter, FileScanner, ExportFormat, ConversionTask
-from swbatch.core.converter import ConversionStatus, ConversionResult
+from swbatch.core import (
+    SolidWorksConverter,
+    FileScanner,
+    ConversionTask,
+    parse_formats,
+    validate_paths,
+)
+from swbatch.core.converter import ConversionStatus, ConversionResult, ConversionStats
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +26,18 @@ class ConversionWorker(threading.Thread):
 
     注意：所有 SolidWorks COM 操作都在此執行緒中進行，
     以符合 COM STA 模式的要求。
+
+    使用 convert_batch + on_progress 統一 skip 邏輯，
+    避免與 converter.py 重複實作。
     """
+
+    # 狀態文字對照表
+    STATUS_TEXT = {
+        ConversionStatus.SUCCESS: "成功",
+        ConversionStatus.FAILED: "失敗",
+        ConversionStatus.SKIPPED: "略過",
+        ConversionStatus.OPEN_FAILED: "開啟失敗",
+    }
 
     def __init__(
         self,
@@ -33,47 +50,41 @@ class ConversionWorker(threading.Thread):
         self.result_queue = result_queue
         self.skip_existing = skip_existing
         self._cancelled = False
+        # 建立 task index 對照表，用於精確更新 UI
+        self._task_indices = {id(task): idx for idx, task in enumerate(tasks)}
 
     def cancel(self) -> None:
-        """取消轉檔"""
+        """取消轉檔（標記取消，下一個檔案前生效）"""
         self._cancelled = True
 
     def run(self) -> None:
         """執行轉檔（在背景執行緒中）"""
         results: list[ConversionResult] = []
 
+        def on_progress(
+            current: int,
+            total: int,
+            task: ConversionTask,
+            status: ConversionStatus | None,
+        ) -> None:
+            """進度回呼，發送訊息給 GUI 主執行緒"""
+            task_idx = self._task_indices.get(id(task), -1)
+
+            if status is None:
+                # 開始處理，顯示「轉檔中...」
+                self.result_queue.put(("progress", current, total, task_idx, "轉檔中..."))
+            else:
+                # 處理完成，顯示狀態
+                status_text = self.STATUS_TEXT.get(status, "未知")
+                self.result_queue.put(("progress", current, total, task_idx, status_text))
+
         try:
             with SolidWorksConverter(visible=False) as converter:
-                total = len(self.tasks)
-
-                for idx, task in enumerate(self.tasks, start=1):
-                    if self._cancelled:
-                        break
-
-                    # 發送進度訊號
-                    self.result_queue.put(("progress", idx, total, task.source_path.name, "轉檔中..."))
-
-                    # 檢查是否需要跳過
-                    if self.skip_existing and not task.needs_conversion():
-                        result = ConversionResult(
-                            task=task,
-                            status=ConversionStatus.SKIPPED,
-                            message="已是最新",
-                        )
-                    else:
-                        result = converter.convert_single(task)
-
-                    results.append(result)
-
-                    # 發送完成狀態
-                    status_text = {
-                        ConversionStatus.SUCCESS: "成功",
-                        ConversionStatus.FAILED: "失敗",
-                        ConversionStatus.SKIPPED: "略過",
-                        ConversionStatus.OPEN_FAILED: "開啟失敗",
-                    }.get(result.status, "未知")
-                    self.result_queue.put(("progress", idx, total, task.source_path.name, status_text))
-
+                results = converter.convert_batch(
+                    tasks=self.tasks,
+                    on_progress=on_progress,
+                    skip_existing=self.skip_existing,
+                )
         except Exception as e:
             logger.exception("轉檔時發生錯誤")
             self.result_queue.put(("error", str(e)))
@@ -241,36 +252,22 @@ class MainWindow:
         if dir_path:
             self.output_var.set(dir_path)
 
-    def _get_selected_formats(self) -> list[ExportFormat]:
-        """取得選擇的輸出格式"""
-        fmt = self.format_var.get()
-        if fmt == "all":
-            return [ExportFormat.STL, ExportFormat.THREEMF]
-        if fmt == "3mf":
-            return [ExportFormat.THREEMF]
-        return [ExportFormat.STL]
-
     def _scan_files(self) -> None:
         """掃描檔案"""
         input_dir = self.input_var.get().strip()
         output_dir = self.output_var.get().strip()
 
-        if not input_dir:
-            messagebox.showwarning("警告", "請選擇輸入目錄")
-            return
-
-        if not output_dir:
-            messagebox.showwarning("警告", "請選擇輸出目錄")
+        # 使用共用驗證邏輯
+        valid, error = validate_paths(input_dir, output_dir)
+        if not valid:
+            messagebox.showwarning("警告", error)
             return
 
         input_path = Path(input_dir)
         output_path = Path(output_dir)
 
-        if not input_path.exists():
-            messagebox.showwarning("警告", f"輸入目錄不存在：{input_dir}")
-            return
-
-        formats = self._get_selected_formats()
+        # 使用共用格式解析邏輯
+        formats = parse_formats(self.format_var.get(), allow_all=True)
         preserve_structure = self.preserve_var.get()
 
         scanner = FileScanner(
@@ -465,18 +462,17 @@ class MainWindow:
                 msg_type = msg[0]
 
                 if msg_type == "progress":
-                    _, current, total, filename, status = msg
+                    _, current, total, task_idx, status = msg
                     self.progress_var.set((current / total) * 100)
                     self.progress_label.config(text=f"{current}/{total}")
-                    self.status_var.set(f"[{status}] {filename}")
 
-                    # 更新樹狀列表狀態
-                    for idx, task in enumerate(self.tasks):
-                        if task.source_path.name == filename:
-                            iid = self.task_to_iid.get(idx)
-                            if iid:
-                                self.tree.set(iid, "status", status)
-                            break
+                    # 使用 task index 精確更新樹狀列表（避免同名檔案誤更新）
+                    if task_idx >= 0 and task_idx < len(self.tasks):
+                        task = self.tasks[task_idx]
+                        self.status_var.set(f"[{status}] {task.source_path.name}")
+                        iid = self.task_to_iid.get(task_idx)
+                        if iid:
+                            self.tree.set(iid, "status", status)
 
                 elif msg_type == "finished":
                     results = msg[1]
@@ -500,16 +496,14 @@ class MainWindow:
         self.cancel_btn.config(state=tk.DISABLED)
         self.progress_label.config(text="")
 
-        # 統計結果
-        success = sum(1 for r in results if r.status == ConversionStatus.SUCCESS)
-        failed = sum(1 for r in results if r.status in (ConversionStatus.FAILED, ConversionStatus.OPEN_FAILED))
-        skipped = sum(1 for r in results if r.status == ConversionStatus.SKIPPED)
+        # 使用 ConversionStats 統一統計邏輯
+        stats = ConversionStats.from_results(results)
 
-        self.status_var.set(f"完成！成功: {success}, 略過: {skipped}, 失敗: {failed}")
+        self.status_var.set(f"完成！{stats.format_summary()}")
 
         messagebox.showinfo(
             "轉檔完成",
-            f"轉檔完成！\n\n成功：{success}\n略過：{skipped}\n失敗：{failed}",
+            f"轉檔完成！\n\n成功：{stats.success}\n略過：{stats.skipped}\n失敗：{stats.failed}",
         )
 
         self.worker = None
