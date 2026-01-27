@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "swbatch"
+version = "0.1.0"
+description = "SolidWorks 批次轉檔工具 - 支援 CLI 和 GUI 雙模式"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "Your Name", email = "your@email.com" }
+]
+dependencies = [
+    "pywin32>=305",
+    "typer[all]>=0.9.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+swbatch = "swbatch.cli.main:app"
+swbatch-gui = "swbatch.gui.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["swbatch"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
