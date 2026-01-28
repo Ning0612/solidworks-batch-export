@@ -1,5 +1,12 @@
 # SolidWorks Batch Export
 
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?style=flat-square&logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square&logo=windows&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)
+![SolidWorks](https://img.shields.io/badge/SolidWorks-API-red?style=flat-square)
+![Typer](https://img.shields.io/badge/CLI-Typer-black?style=flat-square)
+![tkinter](https://img.shields.io/badge/GUI-tkinter-blue?style=flat-square)
+
 批次轉換 SolidWorks 零件檔（`.sldprt`）與組合檔（`.sldasm`）為 STL、3MF 格式的工具。
 
 支援 **CLI 命令列** 和 **GUI 圖形介面** 雙模式。
@@ -96,8 +103,3 @@ python -m swbatch
 ## License
 
 MIT License
-
-## 相關連結
-
-- [GitHub Repository](https://github.com/your-repo/solidworks-batch-export)
-- [Issue Tracker](https://github.com/your-repo/solidworks-batch-export/issues)
