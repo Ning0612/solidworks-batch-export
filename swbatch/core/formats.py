@@ -38,6 +38,37 @@ class ExportFormat(Enum):
         raise ValueError(f"不支援的格式: {value}，支援的格式: stl, 3mf")
 
 
+class InputFormat(Enum):
+    """支援的輸入檔案格式"""
+
+    SLDPRT = "sldprt"
+    SLDASM = "sldasm"
+
+    @property
+    def extension(self) -> str:
+        """取得副檔名（含點號）"""
+        return f".{self.value}"
+
+    @property
+    def display_name(self) -> str:
+        """顯示名稱"""
+        names = {
+            InputFormat.SLDPRT: "零件檔 (.sldprt)",
+            InputFormat.SLDASM: "組合檔 (.sldasm)",
+        }
+        return names.get(self, self.value.upper())
+
+    @classmethod
+    def from_string(cls, value: str) -> "InputFormat":
+        """從字串轉換為 InputFormat"""
+        value = value.lower().strip()
+        if value in ("sldprt", "part"):
+            return cls.SLDPRT
+        if value in ("sldasm", "assembly", "asm"):
+            return cls.SLDASM
+        raise ValueError(f"不支援的輸入格式: {value}，支援的格式: sldprt, sldasm")
+
+
 @dataclass
 class ExportOptions:
     """輸出選項"""
@@ -111,3 +142,46 @@ def parse_formats(formats_str: str, allow_all: bool = False) -> list[ExportForma
             formats.append(ExportFormat.from_string(fmt))
 
     return formats if formats else [ExportFormat.STL]
+
+
+def parse_input_formats(formats_str: str, allow_all: bool = False) -> set[str]:
+    """解析輸入格式字串
+
+    統一 CLI 和 GUI 的輸入格式解析邏輯。
+
+    Args:
+        formats_str: 格式字串，如 "sldprt", "sldasm", "sldprt,sldasm", "all"
+        allow_all: 是否允許 "all" 關鍵字（展開為所有格式）
+
+    Returns:
+        副檔名集合，如 {".sldprt"} 或 {".sldasm"} 或 {".sldprt", ".sldasm"}
+
+    Raises:
+        ValueError: 不支援的格式
+
+    Examples:
+        >>> parse_input_formats("sldprt")
+        {'.sldprt'}
+        >>> parse_input_formats("sldprt,sldasm")
+        {'.sldprt', '.sldasm'}
+        >>> parse_input_formats("all", allow_all=True)
+        {'.sldprt', '.sldasm'}
+    """
+    formats_str = formats_str.strip().lower()
+
+    # 處理 "all" 關鍵字
+    if allow_all and formats_str == "all":
+        return {InputFormat.SLDPRT.extension, InputFormat.SLDASM.extension}
+
+    # 處理空字串 - 預設只掃描 SLDPRT
+    if not formats_str:
+        return {InputFormat.SLDPRT.extension}
+
+    # 解析逗號分隔的格式
+    extensions = set()
+    for fmt in formats_str.split(","):
+        fmt = fmt.strip()
+        if fmt:
+            extensions.add(InputFormat.from_string(fmt).extension)
+
+    return extensions if extensions else {InputFormat.SLDPRT.extension}

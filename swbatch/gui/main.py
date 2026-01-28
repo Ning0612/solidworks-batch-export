@@ -14,6 +14,7 @@ from swbatch.core import (
     FileScanner,
     ConversionTask,
     parse_formats,
+    parse_input_formats,
     validate_paths,
 )
 from swbatch.core.converter import ConversionStatus, ConversionResult, ConversionStats
@@ -148,14 +149,27 @@ class MainWindow:
         options_frame = ttk.LabelFrame(main_frame, text="轉檔選項", padding="10")
         options_frame.pack(fill=tk.X, pady=(0, 10))
 
-        ttk.Label(options_frame, text="輸出格式：").pack(side=tk.LEFT)
+        # 輸入格式
+        ttk.Label(options_frame, text="輸入格式：").pack(side=tk.LEFT)
+        self.input_format_var = tk.StringVar(value="sldprt")
+        input_format_combo = ttk.Combobox(
+            options_frame,
+            textvariable=self.input_format_var,
+            values=["sldprt", "sldasm", "all"],
+            state="readonly",
+            width=10,
+        )
+        input_format_combo.pack(side=tk.LEFT, padx=5)
+
+        # 輸出格式
+        ttk.Label(options_frame, text="輸出格式：").pack(side=tk.LEFT, padx=(20, 0))
         self.format_var = tk.StringVar(value="stl")
         format_combo = ttk.Combobox(
             options_frame,
             textvariable=self.format_var,
             values=["stl", "3mf", "all"],
             state="readonly",
-            width=15,
+            width=10,
         )
         format_combo.pack(side=tk.LEFT, padx=5)
 
@@ -267,6 +281,7 @@ class MainWindow:
         output_path = Path(output_dir)
 
         # 使用共用格式解析邏輯
+        input_extensions = parse_input_formats(self.input_format_var.get(), allow_all=True)
         formats = parse_formats(self.format_var.get(), allow_all=True)
         preserve_structure = self.preserve_var.get()
 
@@ -275,6 +290,7 @@ class MainWindow:
             output_dir=output_path,
             formats=formats,
             preserve_structure=preserve_structure,
+            input_extensions=input_extensions,
         )
 
         self.status_var.set("掃描中...")

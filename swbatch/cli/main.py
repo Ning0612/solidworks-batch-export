@@ -18,7 +18,7 @@ from rich.progress import (
 from rich.table import Table
 from rich.tree import Tree
 
-from swbatch.core import SolidWorksConverter, FileScanner, ExportFormat, ConversionTask, parse_formats
+from swbatch.core import SolidWorksConverter, FileScanner, ExportFormat, ConversionTask, parse_formats, parse_input_formats
 from swbatch.core.converter import ConversionStatus, ConversionStats
 from swbatch.core.logging_config import setup_logging, get_logger
 from swbatch.core.paths import get_log_dir
@@ -64,12 +64,22 @@ def convert(
     ],
 
 
-    formats: Annotated[
+    input_formats: Annotated[
         str,
         typer.Option(
-            "--format", "-f",
-            help="輸出格式：支援 stl, 3mf，可用逗號分隔多個方式",
-            metavar="FORMATS",
+            "--input-format", "-i",
+            help="輸入格式：要掃描的檔案類型 (sldprt, sldasm, all)，預設只掃描零件檔",
+            metavar="INPUT_FORMATS",
+        ),
+    ] = "sldprt",
+
+
+    output_formats: Annotated[
+        str,
+        typer.Option(
+            "--output-format", "-o",
+            help="輸出格式：支援 stl, 3mf, all，可用逗號分隔多個格式",
+            metavar="OUTPUT_FORMATS",
         ),
     ] = "stl",
 
@@ -106,13 +116,15 @@ def convert(
     """
     批次轉換 SolidWorks 檔案
 
-    掃描輸入目錄下的所有 SolidWorks 零件與組合檔，並調用 SolidWorks 背景執行轉檔。
+    掃描輸入目錄下的 SolidWorks 檔案，並調用 SolidWorks 背景執行轉檔。
 
     範例：
-    - 標準轉檔： swbatch convert F:\Parts F:\Output
-    - 多格式轉檔： swbatch convert F:\Parts F:\Output -f stl,3mf
-    - 忽略目錄結構： swbatch convert F:\Parts F:\Output --flat
-    - 強制覆蓋現有檔： swbatch convert F:\Parts F:\Output --force
+    - 標準轉檔（只轉零件）： swbatch convert F:\\Parts F:\\Output
+    - 轉換組合檔： swbatch convert F:\\Parts F:\\Output -i sldasm
+    - 轉換所有檔案： swbatch convert F:\\Parts F:\\Output -i all
+    - 多格式輸出： swbatch convert F:\\Parts F:\\Output -o stl,3mf
+    - 忽略目錄結構： swbatch convert F:\\Parts F:\\Output --flat
+    - 強制覆蓋現有檔： swbatch convert F:\\Parts F:\\Output --force
     """
 
 
@@ -120,16 +132,25 @@ def convert(
     setup_logging(verbose=verbose, log_dir=log_dir, console=console)
     logger.info(f"開始批次轉檔：{input_dir} -> {output_dir}")
 
-    # 解析格式
+    # 解析輸入格式
     try:
-        export_formats = parse_formats(formats)
+        input_extensions = parse_input_formats(input_formats, allow_all=True)
     except ValueError as e:
         console.print(f"[red]錯誤：{e}[/red]")
-        logger.error(f"格式解析失敗：{e}")
+        logger.error(f"輸入格式解析失敗：{e}")
+        raise typer.Exit(1)
+
+    # 解析輸出格式
+    try:
+        export_formats = parse_formats(output_formats, allow_all=True)
+    except ValueError as e:
+        console.print(f"[red]錯誤：{e}[/red]")
+        logger.error(f"輸出格式解析失敗：{e}")
         raise typer.Exit(1)
 
     console.print(f"[bold blue]輸入目錄：[/bold blue]{input_dir}")
     console.print(f"[bold blue]輸出目錄：[/bold blue]{output_dir}")
+    console.print(f"[bold blue]輸入格式：[/bold blue]{', '.join(ext.upper() for ext in input_extensions)}")
     console.print(f"[bold blue]輸出格式：[/bold blue]{', '.join(f.value.upper() for f in export_formats)}")
 
     # 掃描檔案
@@ -138,6 +159,7 @@ def convert(
         output_dir=output_dir,
         formats=export_formats,
         preserve_structure=not flat,
+        input_extensions=input_extensions,
     )
 
     with console.status("[bold green]掃描檔案中..."):
@@ -308,12 +330,21 @@ def scan(
         ),
     ] = None,
 
-    formats: Annotated[
+    input_formats: Annotated[
         str,
         typer.Option(
-            "--format", "-f",
-            help="掃描格式：指定要尋找的目標轉檔格式 (stl, 3mf)",
-            metavar="FORMATS",
+            "--input-format", "-i",
+            help="輸入格式：要掃描的檔案類型 (sldprt, sldasm, all)，預設只掃描零件檔",
+            metavar="INPUT_FORMATS",
+        ),
+    ] = "sldprt",
+
+    output_formats: Annotated[
+        str,
+        typer.Option(
+            "--output-format", "-o",
+            help="輸出格式：指定要預覽的目標轉檔格式 (stl, 3mf, all)",
+            metavar="OUTPUT_FORMATS",
         ),
     ] = "stl",
 
@@ -322,16 +353,26 @@ def scan(
     """
     掃描並列出 SolidWorks 檔案
 
-    僅執行掃描動作，以樹狀結構列出目錄下的所有零件圖與組合圖。
+    僅執行掃描動作，以樹狀結構列出目錄下的檔案。
 
     範例：
-    - 簡易掃描： swbatch scan F:\Parts
-    - 比對輸出目錄： swbatch scan F:\Parts F:\Output
+    - 掃描零件檔： swbatch scan F:\\Parts
+    - 掃描組合檔： swbatch scan F:\\Parts -i sldasm
+    - 掃描所有檔案： swbatch scan F:\\Parts -i all
+    - 比對輸出目錄： swbatch scan F:\\Parts F:\\Output -o stl,3mf
     """
 
 
+    # 解析輸入格式
     try:
-        export_formats = parse_formats(formats)
+        input_extensions = parse_input_formats(input_formats, allow_all=True)
+    except ValueError as e:
+        console.print(f"[red]錯誤：{e}[/red]")
+        raise typer.Exit(1)
+
+    # 解析輸出格式
+    try:
+        export_formats = parse_formats(output_formats, allow_all=True)
     except ValueError as e:
         console.print(f"[red]錯誤：{e}[/red]")
         raise typer.Exit(1)
@@ -340,6 +381,7 @@ def scan(
         input_dir=input_dir,
         output_dir=output_dir or input_dir,
         formats=export_formats,
+        input_extensions=input_extensions,
     )
 
     with console.status("[bold green]掃描檔案中..."):

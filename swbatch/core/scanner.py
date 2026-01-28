@@ -90,6 +90,7 @@ class FileScanner:
         output_dir: Path | str,
         formats: list[ExportFormat] | None = None,
         preserve_structure: bool = True,
+        input_extensions: set[str] | None = None,
     ):
         """
         初始化掃描器
@@ -99,11 +100,13 @@ class FileScanner:
             output_dir: 輸出目錄
             formats: 要輸出的格式列表，預設為 [STL]
             preserve_structure: 是否保留原目錄結構
+            input_extensions: 要掃描的副檔名集合，預設為 {".sldprt"}
         """
         self.input_dir = Path(input_dir).resolve()
         self.output_dir = Path(output_dir).resolve()
         self.formats = formats or [ExportFormat.STL]
         self.preserve_structure = preserve_structure
+        self.input_extensions = input_extensions or {".sldprt"}
 
     def scan(self) -> list[ConversionTask]:
         """
@@ -127,7 +130,7 @@ class FileScanner:
                 filepath = root_path / filename
                 ext = filepath.suffix.lower()
 
-                if ext not in SUPPORTED_EXTENSIONS:
+                if ext not in self.input_extensions:
                     continue
 
                 # 計算輸出目錄（保留結構或扁平化）

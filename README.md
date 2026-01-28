@@ -1,6 +1,6 @@
 # SolidWorks Batch Export
 
-批次轉換 SolidWorks 零件檔（`.sldprt`、`.sldasm`）為 STL、3MF 格式的工具。
+批次轉換 SolidWorks 零件檔（`.sldprt`）與組合檔（`.sldasm`）為 STL、3MF 格式的工具。
 
 支援 **CLI 命令列** 和 **GUI 圖形介面** 雙模式。
 
@@ -32,14 +32,23 @@ pip install -e .
 ### CLI 基本用法
 
 ```bash
-# 基本轉檔
+# 基本轉檔（預設只轉換零件檔）
 swbatch convert F:\Parts F:\Output
 
-# 多格式輸出
-swbatch convert F:\Parts F:\Output -f stl,3mf
+# 轉換組合檔
+swbatch convert F:\Parts F:\Output -i sldasm
 
-# 掃描檔案
+# 轉換所有檔案（零件+組合）
+swbatch convert F:\Parts F:\Output -i all
+
+# 多格式輸出
+swbatch convert F:\Parts F:\Output -o stl,3mf
+
+# 掃描零件檔
 swbatch scan F:\Parts
+
+# 掃描所有檔案
+swbatch scan F:\Parts -i all
 
 # 查看說明
 swbatch --help

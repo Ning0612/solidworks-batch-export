@@ -47,13 +47,22 @@ pip install -e ".[dev]"
 #### 批次轉檔
 
 ```bash
-# 基本轉檔（預設輸出 STL）
+# 基本轉檔（預設輸出 STL，只轉換零件檔）
 swbatch convert F:\Parts F:\Output
 
+# 轉換組合檔
+swbatch convert F:\Parts F:\Output -i sldasm
+
+# 轉換所有檔案（零件+組合）
+swbatch convert F:\Parts F:\Output -i all
+
 # 指定輸出格式
-swbatch convert F:\Parts F:\Output -f stl
-swbatch convert F:\Parts F:\Output -f 3mf
-swbatch convert F:\Parts F:\Output -f stl,3mf  # 同時輸出兩種格式
+swbatch convert F:\Parts F:\Output -o stl
+swbatch convert F:\Parts F:\Output -o 3mf
+swbatch convert F:\Parts F:\Output -o stl,3mf  # 同時輸出兩種格式
+
+# 組合使用：轉換所有檔案並輸出多種格式
+swbatch convert F:\Parts F:\Output -i all -o stl,3mf
 
 # 不保留目錄結構（扁平化）
 swbatch convert F:\Parts F:\Output --flat
@@ -71,14 +80,20 @@ swbatch convert F:\Parts F:\Output --verbose
 #### 掃描檔案
 
 ```bash
-# 列出目錄下的所有 SolidWorks 檔案
+# 列出目錄下的所有 SolidWorks 零件檔（預設）
 swbatch scan F:\Parts
+
+# 掃描組合檔
+swbatch scan F:\Parts -i sldasm
+
+# 掃描所有檔案（零件+組合）
+swbatch scan F:\Parts -i all
 
 # 比對輸出目錄，顯示哪些檔案需要轉檔
 swbatch scan F:\Parts F:\Output
 
-# 指定格式掃描
-swbatch scan F:\Parts F:\Output -f stl,3mf
+# 指定多種輸出格式進行比對
+swbatch scan F:\Parts F:\Output -o stl,3mf
 ```
 
 #### 啟動 GUI
@@ -93,19 +108,23 @@ swbatch gui
 
 | 選項 | 縮寫 | 說明 | 預設值 |
 |------|------|------|--------|
-| `--format` | `-f` | 輸出格式：`stl`、`3mf`，可用逗號分隔 | `stl` |
+| `--input-format` | `-i` | 輸入格式：`sldprt`、`sldasm`、`all` | `sldprt` |
+| `--output-format` | `-o` | 輸出格式：`stl`、`3mf`、`all`，可用逗號分隔 | `stl` |
 | `--flat` | | 不保留目錄結構，所有檔案輸出到同一目錄 | `False` |
 | `--force` | `-F` | 強制重新轉檔，忽略已存在的檔案 | `False` |
 | `--dry-run` | `-n` | 預覽模式，只顯示將要轉檔的檔案 | `False` |
 | `--verbose` | `-v` | 顯示詳細日誌 | `False` |
 
-> **注意**：`convert` 指令會在開始轉檔前要求確認，不適合完全自動化腳本。若需要跳過互動確認，可使用 `--dry-run` 先預覽，或直接使用 Python API。
+> **注意**：
+> - 預設只掃描 `.sldprt` 零件檔，若需要轉換組合檔請使用 `-i sldasm` 或 `-i all`
+> - `convert` 指令會在開始轉檔前要求確認，不適合完全自動化腳本。若需要跳過互動確認，可使用 `--dry-run` 先預覽，或直接使用 Python API。
 
 #### `scan` 指令
 
 | 選項 | 縮寫 | 說明 | 預設值 |
 |------|------|------|--------|
-| `--format` | `-f` | 掃描格式：`stl`、`3mf` | `stl` |
+| `--input-format` | `-i` | 輸入格式：`sldprt`、`sldasm`、`all` | `sldprt` |
+| `--output-format` | `-o` | 輸出格式：`stl`、`3mf`、`all` | `stl` |
 
 ### 支援的檔案格式
 
@@ -144,13 +163,14 @@ python -m swbatch
 
 1. **選擇輸入目錄**：點擊「瀏覽」選擇包含 SolidWorks 檔案的資料夾
 2. **選擇輸出目錄**：點擊「瀏覽」選擇轉檔後檔案的存放位置
-3. **選擇輸出格式**：勾選 STL、3MF 或全部
-4. **掃描檔案**：點擊「掃描檔案」查看檔案清單
-5. **選擇檔案**：在清單中勾選要轉檔的檔案
+3. **選擇輸入格式**：選擇要掃描的檔案類型（sldprt / sldasm / all）
+4. **選擇輸出格式**：選擇轉檔格式（stl / 3mf / all）
+5. **掃描檔案**：點擊「掃描檔案」查看檔案清單
+6. **選擇檔案**：在清單中勾選要轉檔的檔案
    - 雙擊項目可切換勾選狀態
    - 按空白鍵也可切換勾選狀態
-6. **開始轉檔**：點擊「開始轉檔」執行批次轉檔
-7. **查看進度**：進度條會顯示當前處理進度
+7. **開始轉檔**：點擊「開始轉檔」執行批次轉檔
+8. **查看進度**：進度條會顯示當前處理進度
 
 ### GUI 功能特色
 
