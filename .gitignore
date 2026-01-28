@@ -3,6 +3,7 @@ Part
 STL
 .venv
 logs
+config
 __pycache__
 
 # PyInstaller

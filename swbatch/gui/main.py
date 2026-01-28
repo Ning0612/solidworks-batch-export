@@ -16,6 +16,9 @@ from swbatch.core import (
     parse_formats,
     parse_input_formats,
     validate_paths,
+    GuiConfig,
+    load_gui_config,
+    save_gui_config,
 )
 from swbatch.core.converter import ConversionStatus, ConversionResult, ConversionStats
 
@@ -110,9 +113,11 @@ class MainWindow:
         self.task_to_iid: dict[int, str] = {}  # task index -> tree iid
         self.iid_to_task: dict[str, int] = {}  # tree iid -> task index
         self.input_path: Optional[Path] = None
+        self._loading_config: bool = False  # 防止初始化時觸發保存
 
         self._setup_ui()
         self._setup_styles()
+        self._load_config()
 
     def _setup_styles(self) -> None:
         """設定樣式"""
@@ -524,6 +529,9 @@ class MainWindow:
 
         self.worker = None
 
+        # 轉檔完成後儲存設定
+        self._save_config()
+
     def _on_error(self, error_msg: str) -> None:
         """處理錯誤"""
         self._set_ui_enabled(True)
@@ -537,6 +545,49 @@ class MainWindow:
         )
 
         self.worker = None
+
+    def _load_config(self) -> None:
+        """載入設定"""
+        self._loading_config = True
+        try:
+            config = load_gui_config()
+            logger.debug(f"載入設定: {config}")
+
+            # 填入 UI 控制項
+            if config.input_dir:
+                self.input_var.set(config.input_dir)
+            if config.output_dir:
+                self.output_var.set(config.output_dir)
+
+            self.input_format_var.set(config.input_format)
+            self.format_var.set(config.output_format)
+            self.preserve_var.set(config.preserve_structure)
+            self.skip_var.set(config.skip_existing)
+
+        except Exception as e:
+            logger.error(f"載入設定時發生錯誤: {e}")
+        finally:
+            self._loading_config = False
+
+    def _save_config(self) -> None:
+        """儲存設定"""
+        if self._loading_config:
+            return  # 初始化時不儲存
+
+        try:
+            config = GuiConfig(
+                input_dir=self.input_var.get(),
+                output_dir=self.output_var.get(),
+                input_format=self.input_format_var.get(),
+                output_format=self.format_var.get(),
+                preserve_structure=self.preserve_var.get(),
+                skip_existing=self.skip_var.get(),
+            )
+            save_gui_config(config)
+            logger.debug(f"儲存設定: {config}")
+
+        except Exception as e:
+            logger.error(f"儲存設定時發生錯誤: {e}")
 
 
 def main() -> None:
