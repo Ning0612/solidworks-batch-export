@@ -4,3 +4,8 @@ STL
 .venv
 logs
 __pycache__
+
+# PyInstaller
+build/
+dist/
+*.spec

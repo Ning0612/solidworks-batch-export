@@ -526,10 +526,11 @@ class MainWindow:
 def main() -> None:
     """GUI 入口點"""
     from swbatch.core.logging_config import setup_logging
+    from swbatch.core.paths import get_log_dir
 
     # GUI 不需要 Rich Console，日誌只記錄到檔案
-    # 使用項目目錄的 logs/ 與 CLI 統一
-    log_dir = Path.cwd() / "logs"
+    # 使用統一的 get_log_dir 處理開發/打包模式
+    log_dir = get_log_dir()
     setup_logging(verbose=False, log_dir=log_dir, console=None)
 
     root = tk.Tk()

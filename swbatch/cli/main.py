@@ -21,13 +21,21 @@ from rich.tree import Tree
 from swbatch.core import SolidWorksConverter, FileScanner, ExportFormat, ConversionTask, parse_formats
 from swbatch.core.converter import ConversionStatus, ConversionStats
 from swbatch.core.logging_config import setup_logging, get_logger
+from swbatch.core.paths import get_log_dir
 
 app = typer.Typer(
     name="swbatch",
-    help="SolidWorks 批次轉檔工具",
+    help="SolidWorks 批次轉檔工具 - 支援 CLI 命令行與 GUI 圖形介面切換",
     no_args_is_help=True,
+    rich_markup_mode="rich",
+    add_completion=False,  # 禁用自動補齊功能
 )
-console = Console()
+
+
+console = Console(
+    force_terminal=True,
+    legacy_windows=False,  # 使用現代 Windows 終端機功能
+)
 logger = get_logger(__name__)
 
 
@@ -36,27 +44,36 @@ def convert(
     input_dir: Annotated[
         Path,
         typer.Argument(
-            help="輸入目錄路徑（含 SolidWorks 檔案）",
+            help="輸入目錄：包含 SolidWorks (.sldprt, .sldasm) 的資料夾",
             exists=True,
             file_okay=False,
             dir_okay=True,
             resolve_path=True,
+            show_default=False,
         ),
     ],
+
+
     output_dir: Annotated[
         Path,
         typer.Argument(
-            help="輸出目錄路徑",
+            help="輸出目錄：轉檔後的檔案存放路徑",
             resolve_path=True,
+            show_default=False,
         ),
     ],
+
+
     formats: Annotated[
         str,
         typer.Option(
             "--format", "-f",
-            help="輸出格式（可用逗號分隔多個）：stl, 3mf",
+            help="輸出格式：支援 stl, 3mf，可用逗號分隔多個方式",
+            metavar="FORMATS",
         ),
     ] = "stl",
+
+
     flat: Annotated[
         bool,
         typer.Option(
@@ -89,12 +106,18 @@ def convert(
     """
     批次轉換 SolidWorks 檔案
 
+    掃描輸入目錄下的所有 SolidWorks 零件與組合檔，並調用 SolidWorks 背景執行轉檔。
+
     範例：
-        swbatch convert F:\\3D\\Part F:\\3D\\STL
-        swbatch convert F:\\3D\\Part F:\\3D\\Output -f stl,3mf
-        swbatch convert F:\\3D\\Part F:\\3D\\STL --force --flat
+    - 標準轉檔： swbatch convert F:\Parts F:\Output
+    - 多格式轉檔： swbatch convert F:\Parts F:\Output -f stl,3mf
+    - 忽略目錄結構： swbatch convert F:\Parts F:\Output --flat
+    - 強制覆蓋現有檔： swbatch convert F:\Parts F:\Output --force
     """
-    setup_logging(verbose=verbose, log_dir=Path.cwd() / "logs", console=console)
+
+
+    log_dir = get_log_dir()
+    setup_logging(verbose=verbose, log_dir=log_dir, console=console)
     logger.info(f"開始批次轉檔：{input_dir} -> {output_dir}")
 
     # 解析格式
@@ -279,25 +302,34 @@ def scan(
     output_dir: Annotated[
         Optional[Path],
         typer.Argument(
-            help="輸出目錄路徑（用於檢查是否需要轉檔）",
+            help="輸出目錄：若提供此路徑，將比對並標示哪些檔案尚未轉檔",
             resolve_path=True,
+            show_default=False,
         ),
     ] = None,
+
     formats: Annotated[
         str,
         typer.Option(
             "--format", "-f",
-            help="輸出格式：stl, 3mf",
+            help="掃描格式：指定要尋找的目標轉檔格式 (stl, 3mf)",
+            metavar="FORMATS",
         ),
     ] = "stl",
+
+
 ) -> None:
     """
     掃描並列出 SolidWorks 檔案
 
+    僅執行掃描動作，以樹狀結構列出目錄下的所有零件圖與組合圖。
+
     範例：
-        swbatch scan F:\\3D\\Part
-        swbatch scan F:\\3D\\Part F:\\3D\\STL -f stl,3mf
+    - 簡易掃描： swbatch scan F:\Parts
+    - 比對輸出目錄： swbatch scan F:\Parts F:\Output
     """
+
+
     try:
         export_formats = parse_formats(formats)
     except ValueError as e:
@@ -325,7 +357,13 @@ def scan(
 
 @app.command()
 def gui() -> None:
-    """啟動圖形介面"""
+    """
+    啟動圖形介面 (GUI)
+
+    開啟視窗版視窗，提供更直覺的檔案選擇與轉檔進度顯示。
+    """
+
+
     try:
         from swbatch.gui.main import main as gui_main
         gui_main()
@@ -336,3 +374,4 @@ def gui() -> None:
 
 if __name__ == "__main__":
     app()
+
