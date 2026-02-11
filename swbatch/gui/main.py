@@ -1,6 +1,7 @@
 """GUI 主模組 (tkinter)"""
 
 import sys
+import ctypes
 import logging
 import threading
 import queue
@@ -45,17 +46,17 @@ class ConversionWorker(threading.Thread):
 
     def __init__(
         self,
-        tasks: list[ConversionTask],
+        tasks_with_indices: list[tuple[int, ConversionTask]],
         result_queue: queue.Queue,
         skip_existing: bool = True,
     ):
         super().__init__(daemon=True)
-        self.tasks = tasks
+        self.tasks = [task for _, task in tasks_with_indices]
         self.result_queue = result_queue
         self.skip_existing = skip_existing
         self._cancelled = False
-        # 建立 task index 對照表，用於精確更新 UI
-        self._task_indices = {id(task): idx for idx, task in enumerate(tasks)}
+        # 建立 task index 對照表，使用絕對索引（在 MainWindow.tasks 中的位置）
+        self._task_indices = {id(task): abs_idx for abs_idx, task in tasks_with_indices}
 
     def cancel(self) -> None:
         """取消轉檔（標記取消，下一個檔案前生效）"""
@@ -114,6 +115,7 @@ class MainWindow:
         self.iid_to_task: dict[str, int] = {}  # tree iid -> task index
         self.input_path: Optional[Path] = None
         self._loading_config: bool = False  # 防止初始化時觸發保存
+        self.current_processing_iid: Optional[str] = None  # 追蹤當前處理的項目
 
         self._setup_ui()
         self._setup_styles()
@@ -217,6 +219,9 @@ class MainWindow:
 
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 配置視覺標記樣式
+        self.tree.tag_configure("processing", background="#FFF3CD", foreground="#856404")
 
         # 綁定雙擊事件切換勾選
         self.tree.bind("<Double-1>", self._on_tree_double_click)
@@ -421,24 +426,24 @@ class MainWindow:
             task = self.tasks[task_idx]
             self.tree.item(iid, text=f"☐ {task.source_path.name}")
 
-    def _get_selected_tasks(self) -> list[ConversionTask]:
-        """取得勾選的任務"""
+    def _get_selected_tasks(self) -> list[tuple[int, ConversionTask]]:
+        """取得勾選的任務及其在 self.tasks 中的絕對索引"""
         selected = []
         for iid, var in self.check_vars.items():
             if var.get():
                 task_idx = self.iid_to_task[iid]
-                selected.append(self.tasks[task_idx])
+                selected.append((task_idx, self.tasks[task_idx]))
         return selected
 
     def _start_conversion(self) -> None:
         """開始轉檔"""
-        selected_tasks = self._get_selected_tasks()
-        if not selected_tasks:
+        selected_tasks_with_indices = self._get_selected_tasks()
+        if not selected_tasks_with_indices:
             messagebox.showwarning("警告", "請選擇要轉檔的檔案")
             return
 
         # 確認
-        if not messagebox.askyesno("確認", f"是否開始轉檔 {len(selected_tasks)} 個檔案？"):
+        if not messagebox.askyesno("確認", f"是否開始轉檔 {len(selected_tasks_with_indices)} 個檔案？"):
             return
 
         # 建立輸出目錄
@@ -453,7 +458,7 @@ class MainWindow:
         # 啟動背景執行緒
         skip_existing = self.skip_var.get()
         self.result_queue = queue.Queue()
-        self.worker = ConversionWorker(selected_tasks, self.result_queue, skip_existing)
+        self.worker = ConversionWorker(selected_tasks_with_indices, self.result_queue, skip_existing)
         self.worker.start()
 
         # 開始檢查佇列
@@ -495,6 +500,22 @@ class MainWindow:
                         if iid:
                             self.tree.set(iid, "status", status)
 
+                            # 視覺標記：處理中時添加高亮
+                            if status == "轉檔中...":
+                                # 移除前一個項目的標記
+                                if self.current_processing_iid:
+                                    self.tree.item(self.current_processing_iid, tags=())
+                                # 添加當前項目的標記
+                                self.tree.item(iid, tags=("processing",))
+                                self.current_processing_iid = iid
+                                # 自動捲動到正在處理的項目
+                                self.tree.see(iid)
+                            else:
+                                # 處理完成，移除標記
+                                self.tree.item(iid, tags=())
+                                if self.current_processing_iid == iid:
+                                    self.current_processing_iid = None
+
                 elif msg_type == "finished":
                     results = msg[1]
                     self._on_finished(results)
@@ -517,6 +538,11 @@ class MainWindow:
         self.cancel_btn.config(state=tk.DISABLED)
         self.progress_label.config(text="")
 
+        # 清理處理中標記
+        if self.current_processing_iid:
+            self.tree.item(self.current_processing_iid, tags=())
+            self.current_processing_iid = None
+
         # 使用 ConversionStats 統一統計邏輯
         stats = ConversionStats.from_results(results)
 
@@ -538,6 +564,11 @@ class MainWindow:
         self.cancel_btn.config(state=tk.DISABLED)
         self.progress_label.config(text="")
         self.status_var.set("發生錯誤")
+
+        # 清理處理中標記
+        if self.current_processing_iid:
+            self.tree.item(self.current_processing_iid, tags=())
+            self.current_processing_iid = None
 
         messagebox.showerror(
             "錯誤",
@@ -596,9 +627,21 @@ def main() -> None:
     from swbatch.core.paths import get_log_dir
 
     # GUI 不需要 Rich Console，日誌只記錄到檔案
-    # 使用統一的 get_log_dir 處理開發/打包模式
+    # 使用統一的 get_log_dir 處理開發/檔案模式
     log_dir = get_log_dir()
     setup_logging(verbose=False, log_dir=log_dir, console=None)
+
+    # Windows High DPI 支援
+    if sys.platform == "win32":
+        try:
+            # Windows 8.1+
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            try:
+                # Windows Vista/7/8
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
 
     root = tk.Tk()
     app = MainWindow(root)
