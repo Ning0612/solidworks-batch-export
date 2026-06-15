@@ -22,7 +22,7 @@
 
 ```bash
 # 1. 複製專案
-git clone https://github.com/your-repo/solidworks-batch-export.git
+git clone https://github.com/Ning0612/solidworks-batch-export.git
 cd solidworks-batch-export
 
 # 2. 建立虛擬環境
