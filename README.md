@@ -102,4 +102,9 @@ python -m swbatch
 
 ## License
 
-MIT License
+MIT License. See [LICENSE](LICENSE).
+
+This project does not bundle SolidWorks, SolidWorks SDK files, Dassault
+Systemes software, sample CAD files, or vendor documentation. Users must provide
+their own licensed SolidWorks installation. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
